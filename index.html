@@ -137,108 +137,74 @@
     </div>
 
     <div class="label"><span id="bpmText">6.0</span></div>
-    <div class="sub-label">Breaths Per Minute</div>
+    <div class="sub-label">Real-Time BPM</div>
 
-    <input type="range" id="slider" min="3" max="10" step="0.1" value="6">
+    <div id="breath-logic-container"></div>
 
     <div id="my-stopwatch-container"></div>
 
-    <div id="retention-container" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;"></div>
+    <style>
+        .phase-control-group { margin-bottom: 12px; }
+        .phase-header { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 4px; }
+        .input-wrapper { display: flex; align-items: center; gap: 5px; }
+        input[type=number] { width: 50px; background: rgba(0,0,0,0.3); border: 1px solid #333; color: white; border-radius: 4px; text-align: right; }
+        input[type=range] { width: 100%; cursor: pointer; }
+    </style>
 
     <script type="module">
         import { initStopwatch } from './stopwatch.js';
-        import { initRetention } from './retention.js';
+        import { initBreathLogic } from './breathlogic.js'; // The new file
 
         // --- A. INITIALIZATION ---
         initStopwatch('my-stopwatch-container');
 
         // --- B. SETUP ELEMENTS ---
-        const slider = document.getElementById('slider');
         const text = document.getElementById('bpmText');
         const bar = document.getElementById('fillBar');
         
-        // Create a dynamic style sheet to inject custom keyframes for retention
+        // Create dynamic style sheet for custom keyframes
         const dynamicStyle = document.createElement('style');
         document.head.appendChild(dynamicStyle);
 
-        // --- C. STATE MANAGEMENT ---
-        let state = {
-            bpm: parseFloat(slider.value), // From main slider
-            retentionActive: false,        // Is retention mode on?
-            holdTop: 0,                    // Seconds to hold full
-            holdBottom: 0                  // Seconds to hold empty
-        };
+        // --- C. MASTER ANIMATION FUNCTION (Driven by Breath Logic) ---
+        // We initialize the module, which gives us the values immediately (3s/7s default)
+        initBreathLogic('breath-logic-container', (p) => {
+            
+            // 1. Calculate Total Cycle Time
+            // Example: 3s Inhale + 0s Hold + 7s Exhale + 0s Hold = 10s Total
+            const totalDuration = p.inhale + p.holdTop + p.exhale + p.holdBottom;
 
-        // --- D. THE MASTER ANIMATION FUNCTION ---
-        function updateAnimation() {
-            // 1. Calculate Standard Phase Times
-            const baseSecondsPerBreath = 60 / state.bpm;
-            const inhaleTime = baseSecondsPerBreath / 2;
-            const exhaleTime = baseSecondsPerBreath / 2;
+            // Prevent divide by zero
+            if (totalDuration <= 0) return;
 
-            if (!state.retentionActive) {
-                // === MODE: STANDARD ===
-                text.innerText = state.bpm.toFixed(1);
-                
-                // Revert to the simple CSS animation
-                bar.style.animationName = 'breathe'; 
-                bar.style.animationDuration = `${baseSecondsPerBreath}s`;
-                // Clear any custom keyframes so they don't interfere
-                dynamicStyle.innerHTML = '';
+            // 2. Calculate Keyframe Percentages
+            const pInhaleEnd = (p.inhale / totalDuration) * 100;
+            const pHoldTopEnd = ((p.inhale + p.holdTop) / totalDuration) * 100;
+            const pExhaleEnd = ((p.inhale + p.holdTop + p.exhale) / totalDuration) * 100;
 
-            } else {
-                // === MODE: RETENTION ===
-                const totalDuration = inhaleTime + state.holdTop + exhaleTime + state.holdBottom;
-
-                // Calculate Percentages for CSS Keyframes
-                const pInhaleEnd = (inhaleTime / totalDuration) * 100;
-                const pHoldTopEnd = ((inhaleTime + state.holdTop) / totalDuration) * 100;
-                const pExhaleEnd = ((inhaleTime + state.holdTop + exhaleTime) / totalDuration) * 100;
-
-                // Write Custom CSS Keyframes
-                const customKeyframes = `
-                    @keyframes breathe-custom {
-                        0% { height: 0%; }
-                        ${pInhaleEnd}% { height: 100%; }
-                         ${pHoldTopEnd}% { height: 100%; }
-                        ${pExhaleEnd}% { height: 0%; }
-                        100% { height: 0%; }
-                    }
+            // 3. Generate CSS Keyframes (Phase-Based)
+            const customKeyframes = `
+                @keyframes breathe-phase {
+                    0% { height: 0%; }                      /* Start Inhale */
+                    ${pInhaleEnd}% { height: 100%; }        /* End Inhale */
+                    ${pHoldTopEnd}% { height: 100%; }       /* End Hold Top */
+                    ${pExhaleEnd}% { height: 0%; }          /* End Exhale */
+                    100% { height: 0%; }                    /* End Hold Bottom */
+                }
             `;
 
-                // Inject into the page
-                dynamicStyle.innerHTML = customKeyframes;
+            // 4. Inject and Apply
+            dynamicStyle.innerHTML = customKeyframes;
+            
+            bar.style.animationName = 'none';
+            void bar.offsetWidth; // Force Reflow (Restart Animation)
+            bar.style.animationName = 'breathe-phase';
+            bar.style.animationDuration = `${totalDuration}s`;
 
-                // Force Restart Animation
-                bar.style.animationName = 'none';
-                void bar.offsetWidth; /* Trigger reflow (magic reset) */
-                bar.style.animationName = 'breathe-custom';
-                bar.style.animationDuration = `${totalDuration}s`;
-
-                // Update text to show "Real" BPM
-                const realBPM = 60 / totalDuration;
-                text.innerText = `${realBPM.toFixed(1)} (Ret)`;
-            }
-        }
-
-        // --- E. EVENT LISTENERS ---
-        
-        // 1. Listen for Main Slider Changes
-        slider.addEventListener('input', () => {
-            state.bpm = parseFloat(slider.value);
-            updateAnimation();
+            // 5. Update Real-Time BPM Display
+            const realBPM = 60 / totalDuration;
+            text.innerText = realBPM.toFixed(1);
         });
-
-        // 2. Listen for Retention Module Updates
-        initRetention('retention-container', (values) => {
-            state.retentionActive = values.isActive;
-            state.holdTop = values.holdTop;
-            state.holdBottom = values.holdBottom;
-            updateAnimation();
-        });
-
-        // Start the engine!
-        updateAnimation();
     </script>
 </body>
 </html>
