@@ -132,113 +132,140 @@
     </style>
 </head>
 <body>
-<div class="container">
+<div class="visualizer-section">
+    <div class="container">
         <div class="fill" id="fillBar"></div>
     </div>
-
     <div class="label"><span id="bpmText">6.0</span></div>
-    <div class="sub-label">Breaths Per Minute</div>
+    <div class="sub-label">Real-Time BPM</div>
+</div>
 
-    <input type="range" id="slider" min="3" max="10" step="0.1" value="6">
+<div class="controls-dashboard">
+    
+    <div class="panel-column" id="breath-ui-container"></div>
 
-    <div id="my-stopwatch-container"></div>
+    <div class="panel-column center-panel" id="my-stopwatch-container"></div>
 
-    <div id="retention-container" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;"></div>
+    <div class="panel-column" id="retention-ui-container"></div>
 
-    <script type="module">
-        import { initStopwatch } from './stopwatch.js';
-        import { initRetention } from './retention.js';
+</div>
 
-        // --- A. INITIALIZATION ---
-        initStopwatch('my-stopwatch-container');
+<style>
+    /* Global Layout Fixes */
+    body {
+        display: flex;
+        flex-direction: column; /* Stack top and bottom sections */
+        height: 100vh;
+        overflow: hidden;
+    }
 
-        // --- B. SETUP ELEMENTS ---
-        const slider = document.getElementById('slider');
-        const text = document.getElementById('bpmText');
-        const bar = document.getElementById('fillBar');
+    /* Top Section Styling */
+    .visualizer-section {
+        flex: 1; /* Takes all available top space */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+    }
+
+    /* Bottom Dashboard Styling */
+    .controls-dashboard {
+        height: 320px; /* Fixed height for the control panel */
+        width: 100%;
+        background: rgba(255, 255, 255, 0.03); /* Subtle background */
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        justify-content: space-evenly; /* Even spacing between columns */
+        align-items: flex-start;
+        padding-top: 30px;
+    }
+
+    /* Column Styling */
+    .panel-column {
+        width: 280px;
+        padding: 20px;
+        background: rgba(0, 0, 0, 0.2); /* Darker cards for controls */
+        border-radius: 15px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Center Panel (Stopwatch) Specifics */
+    .center-panel {
+        background: transparent;
+        border: none;
+        display: flex;
+        justify-content: center;
+        padding-top: 0;
+    }
+
+    /* Fix internal stopwatch sizing */
+    .stopwatch-container {
+        margin: 0 !important;
+        width: 100% !important;
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    /* Input Styles (from your snippet) */
+    .phase-control-group { margin-bottom: 12px; }
+    .phase-header { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 4px; }
+    .input-wrapper { display: flex; align-items: center; gap: 5px; }
+    input[type=number] { width: 50px; background: rgba(0,0,0,0.3); border: 1px solid #333; color: white; border-radius: 4px; text-align: right; }
+    input[type=range] { width: 100%; cursor: pointer; }
+</style>
+
+<script type="module">
+    import { initStopwatch } from './stopwatch.js';
+    import { initBreathLogic } from './breathlogic.js';
+
+    // A. Initialize Stopwatch (Center)
+    initStopwatch('my-stopwatch-container');
+
+    // B. Setup Elements
+    const text = document.getElementById('bpmText');
+    const bar = document.getElementById('fillBar');
+    const dynamicStyle = document.createElement('style');
+    document.head.appendChild(dynamicStyle);
+
+    // C. Initialize Breath Logic (Left & Right)
+    // We pass TWO container IDs: 
+    // 1. 'breath-ui-container' (Left side)
+    // 2. 'retention-ui-container' (Right side)
+    initBreathLogic('breath-ui-container', 'retention-ui-container', (p) => {
         
-        // Create a dynamic style sheet to inject custom keyframes for retention
-        const dynamicStyle = document.createElement('style');
-        document.head.appendChild(dynamicStyle);
+        // 1. Calculate Total Cycle Time
+        const totalDuration = p.inhale + p.holdTop + p.exhale + p.holdBottom;
 
-        // --- C. STATE MANAGEMENT ---
-        let state = {
-            bpm: parseFloat(slider.value), // From main slider
-            retentionActive: false,        // Is retention mode on?
-            holdTop: 0,                    // Seconds to hold full
-            holdBottom: 0                  // Seconds to hold empty
-        };
+        if (totalDuration <= 0) return;
 
-        // --- D. THE MASTER ANIMATION FUNCTION ---
-        function updateAnimation() {
-            // 1. Calculate Standard Phase Times
-            const baseSecondsPerBreath = 60 / state.bpm;
-            const inhaleTime = baseSecondsPerBreath / 2;
-            const exhaleTime = baseSecondsPerBreath / 2;
+        // 2. Calculate Keyframe Percentages
+        const pInhaleEnd = (p.inhale / totalDuration) * 100;
+        const pHoldTopEnd = ((p.inhale + p.holdTop) / totalDuration) * 100;
+        const pExhaleEnd = ((p.inhale + p.holdTop + p.exhale) / totalDuration) * 100;
 
-            if (!state.retentionActive) {
-                // === MODE: STANDARD ===
-                text.innerText = state.bpm.toFixed(1);
-                
-                // Revert to the simple CSS animation
-                bar.style.animationName = 'breathe'; 
-                bar.style.animationDuration = `${baseSecondsPerBreath}s`;
-                // Clear any custom keyframes so they don't interfere
-                dynamicStyle.innerHTML = '';
-
-            } else {
-                // === MODE: RETENTION ===
-                const totalDuration = inhaleTime + state.holdTop + exhaleTime + state.holdBottom;
-
-                // Calculate Percentages for CSS Keyframes
-                const pInhaleEnd = (inhaleTime / totalDuration) * 100;
-                const pHoldTopEnd = ((inhaleTime + state.holdTop) / totalDuration) * 100;
-                const pExhaleEnd = ((inhaleTime + state.holdTop + exhaleTime) / totalDuration) * 100;
-
-                // Write Custom CSS Keyframes
-                const customKeyframes = `
-                    @keyframes breathe-custom {
-                        0% { height: 0%; }
-                        ${pInhaleEnd}% { height: 100%; }
-                         ${pHoldTopEnd}% { height: 100%; }
-                        ${pExhaleEnd}% { height: 0%; }
-                        100% { height: 0%; }
-                    }
-            `;
-
-                // Inject into the page
-                dynamicStyle.innerHTML = customKeyframes;
-
-                // Force Restart Animation
-                bar.style.animationName = 'none';
-                void bar.offsetWidth; /* Trigger reflow (magic reset) */
-                bar.style.animationName = 'breathe-custom';
-                bar.style.animationDuration = `${totalDuration}s`;
-
-                // Update text to show "Real" BPM
-                const realBPM = 60 / totalDuration;
-                text.innerText = `${realBPM.toFixed(1)} (Ret)`;
+        // 3. Generate CSS Keyframes
+        const customKeyframes = `
+            @keyframes breathe-phase {
+                0% { height: 0%; }
+                ${pInhaleEnd}% { height: 100%; }
+                ${pHoldTopEnd}% { height: 100%; }
+                ${pExhaleEnd}% { height: 0%; }
+                100% { height: 0%; }
             }
-        }
+        `;
 
-        // --- E. EVENT LISTENERS ---
+        // 4. Inject and Apply
+        dynamicStyle.innerHTML = customKeyframes;
         
-        // 1. Listen for Main Slider Changes
-        slider.addEventListener('input', () => {
-            state.bpm = parseFloat(slider.value);
-            updateAnimation();
-        });
+        bar.style.animationName = 'none';
+        void bar.offsetWidth; // Force Reflow
+        bar.style.animationName = 'breathe-phase';
+        bar.style.animationDuration = `${totalDuration}s`;
 
-        // 2. Listen for Retention Module Updates
-        initRetention('retention-container', (values) => {
-            state.retentionActive = values.isActive;
-            state.holdTop = values.holdTop;
-            state.holdBottom = values.holdBottom;
-            updateAnimation();
-        });
-
-        // Start the engine!
-        updateAnimation();
-    </script>
+        // 5. Update Real-Time BPM Display
+        const realBPM = 60 / totalDuration;
+        text.innerText = realBPM.toFixed(1);
+    });
+</script>
 </body>
 </html>
