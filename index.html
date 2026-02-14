@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Resonance Pacer</title>
+    <style>
+        /* THEME: Ancient Forest & Science */
+        body {
+            background-color: #0d1316; /* Dark Slate */
+            color: #aebcb9;            /* Soft Sage */
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        /* THE BREATHING BAR */
+        .container {
+            width: 150px;
+            height: 50vh; /* Half screen height */
+            background: #1c262b;
+            border-radius: 20px;
+            border: 2px solid #333;
+            position: relative;
+            overflow: hidden; /* Keeps the fill inside */
+            box-shadow: 0 0 30px rgba(74, 222, 128, 0.1);
+        }
+
+        .fill {
+            width: 100%;
+            height: 0%; /* Starts empty */
+            background: linear-gradient(to top, #0f766e, #4ade80); /* Teal to Bio-Green */
+            position: absolute;
+            bottom: 0;
+            
+            /* The Animation */
+            animation-name: breathe;
+            animation-timing-function: ease-in-out; /* Smooth sine-wave feel */
+            animation-iteration-count: infinite;
+            animation-duration: 10s; /* Default (6 BPM) */
+        }
+
+        /* TEXT LABELS */
+        .label {
+            margin-top: 20px;
+            font-size: 2rem;
+            color: white;
+        }
+        .sub-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+        }
+
+        /* THE SLIDER (Simple Style) */
+        input[type=range] {
+            width: 300px;
+            accent-color: #4ade80; /* simple modern browser coloring */
+            cursor: pointer;
+        }
+
+        /* ANIMATION KEYFRAMES */
+        @keyframes breathe {
+            0%   { height: 0%; }   /* Exhale Complete */
+            50%  { height: 100%; } /* Inhale Complete */
+            100% { height: 0%; }   /* Exhale Complete */
+        }
+
+        /* Style for the container where the stopwatch will live */
+        #my-stopwatch-container {
+            background: rgba(255,255,255,0.05);
+            padding: 2rem;
+            border-radius: 20px;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .time-display { font-size: 3rem; font-family: monospace; color: #4ade80; margin-bottom: 1rem; }
+        
+        button {
+            background: transparent; border: 1px solid #4ade80; color: #4ade80;
+            padding: 10px 20px; border-radius: 30px; cursor: pointer; margin: 0 5px;
+        }
+        
+        button.active { background: #4ade80; color: #0d1316; }
+
+        /* Retention Panel Styles */
+.mode-btn {
+    width: 100%;
+    padding: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    border-radius: 10px;
+    cursor: pointer;
+    margin-bottom: 15px;
+    transition: all 0.3s;
+}
+
+.mode-btn.active-mode {
+    background: var(--accent-color);
+    color: var(--bg-color);
+    font-weight: bold;
+}
+
+.hidden-panel {
+    display: none;
+}
+
+.control-group {
+    margin-bottom: 15px;
+    background: rgba(0,0,0,0.2);
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.label-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    font-size: 0.9rem;
+}
+
+.val-display {
+    color: #fff;
+    font-family: monospace;
+}
+    </style>
+</head>
+<body>
+<div class="container">
+        <div class="fill" id="fillBar"></div>
+    </div>
+
+    <div class="label"><span id="bpmText">6.0</span></div>
+    <div class="sub-label">Breaths Per Minute</div>
+
+    <input type="range" id="slider" min="3" max="10" step="0.1" value="6">
+
+    <div id="my-stopwatch-container"></div>
+
+    <div id="retention-container" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;"></div>
+
+    <script type="module">
+        import { initStopwatch } from './stopwatch.js';
+        import { initRetention } from './retention.js';
+
+        // --- A. INITIALIZATION ---
+        initStopwatch('my-stopwatch-container');
+
+        // --- B. SETUP ELEMENTS ---
+        const slider = document.getElementById('slider');
+        const text = document.getElementById('bpmText');
+        const bar = document.getElementById('fillBar');
+        
+        // Create a dynamic style sheet to inject custom keyframes for retention
+        const dynamicStyle = document.createElement('style');
+        document.head.appendChild(dynamicStyle);
+
+        // --- C. STATE MANAGEMENT ---
+        let state = {
+            bpm: parseFloat(slider.value), // From main slider
+            retentionActive: false,        // Is retention mode on?
+            holdTop: 0,                    // Seconds to hold full
+            holdBottom: 0                  // Seconds to hold empty
+        };
+
+        // --- D. THE MASTER ANIMATION FUNCTION ---
+        function updateAnimation() {
+            // 1. Calculate Standard Phase Times
+            const baseSecondsPerBreath = 60 / state.bpm;
+            const inhaleTime = baseSecondsPerBreath / 2;
+            const exhaleTime = baseSecondsPerBreath / 2;
+
+            if (!state.retentionActive) {
+                // === MODE: STANDARD ===
+                text.innerText = state.bpm.toFixed(1);
+                
+                // Revert to the simple CSS animation
+                bar.style.animationName = 'breathe'; 
+                bar.style.animationDuration = `${baseSecondsPerBreath}s`;
+                // Clear any custom keyframes so they don't interfere
+                dynamicStyle.innerHTML = '';
+
+            } else {
+                // === MODE: RETENTION ===
+                const totalDuration = inhaleTime + state.holdTop + exhaleTime + state.holdBottom;
+
+                // Calculate Percentages for CSS Keyframes
+                const pInhaleEnd = (inhaleTime / totalDuration) * 100;
+                const pHoldTopEnd = ((inhaleTime + state.holdTop) / totalDuration) * 100;
+                const pExhaleEnd = ((inhaleTime + state.holdTop + exhaleTime) / totalDuration) * 100;
+
+                // Write Custom CSS Keyframes
+                const customKeyframes = `
+                    @keyframes breathe-custom {
+                        0% { height: 0%; }
+                        ${pInhaleEnd}% { height: 100%; }
+                         ${pHoldTopEnd}% { height: 100%; }
+                        ${pExhaleEnd}% { height: 0%; }
+                        100% { height: 0%; }
+                    }
+            `;
+
+                // Inject into the page
+                dynamicStyle.innerHTML = customKeyframes;
+
+                // Force Restart Animation
+                bar.style.animationName = 'none';
+                void bar.offsetWidth; /* Trigger reflow (magic reset) */
+                bar.style.animationName = 'breathe-custom';
+                bar.style.animationDuration = `${totalDuration}s`;
+
+                // Update text to show "Real" BPM
+                const realBPM = 60 / totalDuration;
+                text.innerText = `${realBPM.toFixed(1)} (Ret)`;
+            }
+        }
+
+        // --- E. EVENT LISTENERS ---
+        
+        // 1. Listen for Main Slider Changes
+        slider.addEventListener('input', () => {
+            state.bpm = parseFloat(slider.value);
+            updateAnimation();
+        });
+
+        // 2. Listen for Retention Module Updates
+        initRetention('retention-container', (values) => {
+            state.retentionActive = values.isActive;
+            state.holdTop = values.holdTop;
+            state.holdBottom = values.holdBottom;
+            updateAnimation();
+        });
+
+        // Start the engine!
+        updateAnimation();
+    </script>
+</body>
+</html>
