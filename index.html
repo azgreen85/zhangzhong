@@ -218,32 +218,60 @@
     import { initStopwatch } from './stopwatch.js';
     import { initBreathLogic } from './breathlogic.js';
 
-    // A. Initialize Stopwatch (Center)
-    initStopwatch('my-stopwatch-container');
+    // 1. Global State to track if the session is running
+    let isSessionActive = false;
 
-    // B. Setup Elements
+    // 2. Setup DOM Elements
     const text = document.getElementById('bpmText');
     const bar = document.getElementById('fillBar');
     const dynamicStyle = document.createElement('style');
     document.head.appendChild(dynamicStyle);
 
-    // C. Initialize Breath Logic (Left & Right)
-    // We pass TWO container IDs: 
-    // 1. 'breath-ui-container' (Left side)
-    // 2. 'retention-ui-container' (Right side)
+    // 3. Initialize Stopwatch with a Callback function
+    // The stopwatch now tells us when 'isRunning' changes (True/False)
+    initStopwatch('my-stopwatch-container', 
+        // 1. On State Change (Start/Stop)
+        (isRunning) => {
+            isSessionActive = isRunning;
+            if (isRunning) {
+                bar.style.animationPlayState = 'running';
+            } else {
+                bar.style.animationPlayState = 'paused';
+            }
+        },
+        // 2. On Reset (Rewind the Bar)
+        () => {
+            // We force the animation to 'none' and back to 'breathe-phase'
+            // This instantly snaps the bar back to 0%
+            const currentAnim = bar.style.animationName;
+            bar.style.animationName = 'none';
+            
+            // We deliberately DO NOT put the animation name back immediately
+            // We leave it as 'none' until the user presses Start again.
+            // This ensures it looks visibly empty/reset.
+            
+            setTimeout(() => {
+                // Prepare it for the next start
+                bar.style.animationName = 'breathe-phase';
+                bar.style.animationPlayState = 'paused';
+            }, 50);
+        }
+    );
+
+    // 4. Initialize Breath Logic
     initBreathLogic('breath-ui-container', 'retention-ui-container', (p) => {
         
-        // 1. Calculate Total Cycle Time
+        // Calculate Total Cycle Time
         const totalDuration = p.inhale + p.holdTop + p.exhale + p.holdBottom;
 
         if (totalDuration <= 0) return;
 
-        // 2. Calculate Keyframe Percentages
+        // Calculate Keyframe Percentages
         const pInhaleEnd = (p.inhale / totalDuration) * 100;
         const pHoldTopEnd = ((p.inhale + p.holdTop) / totalDuration) * 100;
         const pExhaleEnd = ((p.inhale + p.holdTop + p.exhale) / totalDuration) * 100;
 
-        // 3. Generate CSS Keyframes
+        // Generate CSS Keyframes
         const customKeyframes = `
             @keyframes breathe-phase {
                 0% { height: 0%; }
@@ -254,18 +282,28 @@
             }
         `;
 
-        // 4. Inject and Apply
+        // Inject and Apply
         dynamicStyle.innerHTML = customKeyframes;
         
+        // Reset the animation to apply new timing
         bar.style.animationName = 'none';
         void bar.offsetWidth; // Force Reflow
         bar.style.animationName = 'breathe-phase';
         bar.style.animationDuration = `${totalDuration}s`;
 
-        // 5. Update Real-Time BPM Display
+        // CRITICAL CHECK:
+        // When we move a slider, the animation rebuilds. 
+        // We must make sure it DOES NOT auto-start unless the stopwatch is already running.
+        bar.style.animationPlayState = isSessionActive ? 'running' : 'paused';
+
+        // Update Real-Time BPM Display
         const realBPM = 60 / totalDuration;
         text.innerText = realBPM.toFixed(1);
     });
+
+    // 5. Force Initial State to Paused (On Load)
+    bar.style.animationPlayState = 'paused';
+</script>
 </script>
 </body>
 </html>
